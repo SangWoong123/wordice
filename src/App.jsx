@@ -897,12 +897,14 @@ export default function WordiceGame() {
   return (
     <div
       style={{
-        minHeight: '100%',
+        minHeight: '100vh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: '40px 20px',
-        background: '#faf9f5',
+        backgroundColor: '#faf9f5',
+        backgroundImage: 'radial-gradient(rgba(27,26,22,0.07) 1px, transparent 1px)',
+        backgroundSize: '20px 20px',
       }}
     >
       <style>{`
