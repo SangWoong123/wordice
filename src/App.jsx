@@ -258,18 +258,8 @@ function utcDayString(d = new Date()) {  return `${d.getUTCFullYear()}-${String(
 }
 
 function Die({ letter, isSel, isRolling, onClick }) {
-  const base = {
-    width: 88,
-    height: 88,
-    borderRadius: 4,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'transform .09s ease, box-shadow .09s ease',
-  };
   const style = isSel
     ? {
-        ...base,
         background: CREAM,
         boxShadow: '0 1px 0 rgba(0,0,0,.45)',
         transform: 'translateY(4px)',
@@ -277,7 +267,6 @@ function Die({ letter, isSel, isRolling, onClick }) {
         outlineOffset: 2,
       }
     : {
-        ...base,
         background: CREAM,
         boxShadow: '0 5px 0 rgba(0,0,0,.45)',
       };
@@ -292,8 +281,10 @@ function Die({ letter, isSel, isRolling, onClick }) {
       className={`wd-die ${isRolling ? 'wd-rolling' : ''}`}
       style={{ background: 'none', border: 0, padding: 0, cursor: isRolling ? 'default' : 'pointer' }}
     >
-      <div style={style}>
-        <span style={{ font: `400 42px ${SERIF}`, color: INK }}>{letter}</span>
+      <div className="wd-tile" style={style}>
+        <span className="wd-letter" style={{ fontFamily: SERIF, color: INK }}>
+          {letter}
+        </span>
       </div>
     </button>
   );
@@ -459,7 +450,7 @@ function WinModal({ secretWord, foundOrder, rolls, wordsMade, onShare, onClose, 
               cursor: 'pointer',
             }}
           >
-            {copied ? 'copied' : 'share'}
+            {copied ? 'image copied — paste it anywhere' : 'share'}
           </button>
           <button
             type="button"
@@ -802,14 +793,16 @@ export default function WordiceGame() {
         x.fillText(`#${puzzleNo} · ${seedStr} UTC`, W / 2, 88);
 
         if (solved) {
-          // plain green/gray squares — no letters, no reveal
+          // one square per letter of the secret word — green if actually used before calling it
+          const usedSet = new Set(foundOrder);
+          const squares = [...secretWord];
           const size = 80;
           const gap = 14;
-          const startX = (W - (size * DIE_COUNT + gap * (DIE_COUNT - 1))) / 2;
+          const startX = (W - (size * squares.length + gap * (squares.length - 1))) / 2;
           const y = 120;
-          letters.forEach((l, i) => {
+          squares.forEach((ch, i) => {
             const dx = startX + i * (size + gap);
-            x.fillStyle = clueSet.has(l) ? ACCENT_HEX : 'rgba(240,237,228,.25)';
+            x.fillStyle = usedSet.has(ch) ? ACCENT_HEX : 'rgba(240,237,228,.25)';
             x.fillRect(dx, y, size, size);
           });
 
@@ -848,7 +841,7 @@ export default function WordiceGame() {
 
         c.toBlob(resolve, 'image/png');
       }),
-    [letters, clueSet, solved, rolls, puzzleNo, seedStr]
+    [letters, solved, rolls, puzzleNo, seedStr, foundOrder, secretWord]
   );
 
   const share = useCallback(async () => {
@@ -857,14 +850,22 @@ export default function WordiceGame() {
       const t = setTimeout(() => setCopied(false), 1800);
       timers.current.push(t);
     };
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     try {
       const blob = await drawCard();
       const file = new File([blob], 'wordice.png', { type: 'image/png' });
-      if (navigator.canShare?.({ files: [file] })) {
+      if (isMobile && navigator.canShare?.({ files: [file] })) {
+        // mobile OS share sheets register real SNS apps (KakaoTalk, Instagram, etc.)
         await navigator.share({ files: [file], text: shareText() });
       } else if (navigator.clipboard && window.ClipboardItem) {
+        // desktop: copy the image so it can be pasted into any app/SNS directly
         await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
+        try {
+          await navigator.clipboard.writeText(shareText());
+        } catch {}
         flash();
+      } else if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], text: shareText() });
       } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -916,8 +917,23 @@ export default function WordiceGame() {
           100% { transform: translateY(0) }
         }
         .wd-rolling { animation: wdShake .56s ease; }
-        .wd-grid { display: grid; grid-template-columns: minmax(0,1fr) 292px; }
+        .wd-grid { display: grid; grid-template-columns: minmax(0,1fr) clamp(280px, 26vw, 380px); }
         .wd-dice { display: grid; grid-template-columns: repeat(3, 88px); gap: 18px; justify-content: center; }
+        .wd-tile {
+          width: 88px; height: 88px; border-radius: 4px;
+          display: flex; align-items: center; justify-content: center;
+          transition: transform .09s ease, box-shadow .09s ease;
+        }
+        .wd-letter { font-size: 42px; font-weight: 400; }
+        .wd-title { font-size: 34px; }
+        .wd-subtitle { font-size: 16px; }
+        @media (min-width: 1180px) {
+          .wd-dice { grid-template-columns: repeat(3, 108px); gap: 22px; }
+          .wd-tile { width: 108px; height: 108px; }
+          .wd-letter { font-size: 52px; }
+          .wd-title { font-size: 42px; }
+          .wd-subtitle { font-size: 19px; }
+        }
         .wd-backdrop {
           position: fixed; inset: 0; z-index: 60;
           background: rgba(14,13,10,.6);
@@ -990,7 +1006,7 @@ export default function WordiceGame() {
       <div
         style={{
           width: '100%',
-          maxWidth: 960,
+          maxWidth: 'min(94vw, 1240px)',
           background: INK,
           border: '1px solid #0E0D0A',
           borderRadius: 8,
@@ -1069,12 +1085,23 @@ export default function WordiceGame() {
           </div>
 
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
-              <span style={{ font: `400 34px/1 ${SERIF}`, color: CREAM }}>Wordice</span>
+              <span className="wd-title" style={{ fontFamily: SERIF, lineHeight: 1, color: CREAM }}>
+                Wordice
+              </span>
               <span style={{ font: `400 11px ${MONO}`, letterSpacing: '.12em', color: 'rgba(240,237,228,.62)' }}>
                 #{puzzleNo}
               </span>
             </div>
-            <p style={{ margin: '0 0 12px', maxWidth: 'calc(100% - 130px)', font: `400 italic 16px ${SERIF}`, color: 'rgba(240,237,228,.72)' }}>
+            <p
+              className="wd-subtitle"
+              style={{
+                margin: '0 0 12px',
+                maxWidth: 'calc(100% - 130px)',
+                fontFamily: SERIF,
+                fontStyle: 'italic',
+                color: 'rgba(240,237,228,.72)',
+              }}
+            >
               Six dice, one hidden word. Spend rolls to see letters.
             </p>
 
