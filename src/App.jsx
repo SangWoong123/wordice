@@ -805,10 +805,11 @@ export default function WordiceGame() {
     if (solved) {
       return `Wordice #${puzzleNo}\n${squaresOf(confirmed)}\nSolved in ${rolls} rolls.\n${SITE_ORIGIN}`;
     }
-    // 실제 주사위 배치(3×2)와 공유 이미지에 맞춰 두 줄로 나눈다
+    // 3+3 두 줄. 앞뒤를 주사위로 감싸 양 줄을 같은 틀로 맞춘다 (비례폰트라
+    // 글자별 폭은 달라도, 같은 위치에서 시작·끝나 격자처럼 읽힌다).
     const row1 = letters.slice(0, 3).join(' ');
     const row2 = letters.slice(3).join(' ');
-    return `Wordice #${puzzleNo}\n🎲 ${row1}\n   ${row2}\nStuck here — can you spot a word?\n${SITE_ORIGIN}`;
+    return `Wordice #${puzzleNo}\n🎲 ${row1} 🎲\n🎲 ${row2} 🎲\nStuck here — can you spot a word?\n${SITE_ORIGIN}`;
   }, [solved, puzzleNo, confirmed, rolls, letters]);
 
   // 텍스트로만 공유한다 — 주소가 눌리는 형태가 유입에 제일 낫고, 이미지 공유는
