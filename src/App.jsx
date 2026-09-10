@@ -134,15 +134,36 @@ function ensureVowelPerDie(dice) {
   return dice;
 }
 
-function boardHasWord(letters) {
+// 서로 다른 단어를 최소 이만큼은 만들 수 있어야 "풀 만한" 판으로 본다.
+// 단어가 1~2개뿐인 판은 대개 WRY 같은 생소한 단어라서, 플레이어 눈에는
+// 아무 단어도 안 보이는 막힌 판처럼 느껴진다.
+const MIN_PLAYABLE_WORDS = 3;
+
+/**
+ * 이 눈으로 만들 수 있는 서로 다른 단어의 수 (cap 에 닿으면 조기 종료).
+ * @param {string[]} letters
+ * @param {number} [cap] 이만큼 세면 더 안 센다
+ * @returns {number}
+ */
+function boardWordCount(letters, cap = MIN_PLAYABLE_WORDS) {
   const n = letters.length;
+  const seen = new Set();
   for (let mask = 1; mask < 1 << n; mask++) {
     const picked = [];
     for (let i = 0; i < n; i++) if (mask & (1 << i)) picked.push(letters[i]);
     if (picked.length < MIN_WORD) continue;
-    if (ANAGRAM_KEYS.has(picked.sort().join(''))) return true;
+    const key = picked.sort().join('');
+    if (ANAGRAM_KEYS.has(key)) {
+      seen.add(key);
+      if (seen.size >= cap) return seen.size;
+    }
   }
-  return false;
+  return seen.size;
+}
+
+/** @param {string[]} letters @returns {boolean} 충분히 풀 만한 판인지 */
+function isPlayable(letters) {
+  return boardWordCount(letters) >= MIN_PLAYABLE_WORDS;
 }
 
 /**
@@ -249,18 +270,26 @@ function rollFaces(faceSets, indices, base) {
 }
 
 /**
- * 최소 한 단어는 만들 수 있는 눈이 나올 때까지 다시 굴린다.
+ * 충분히 풀 만한 판(서로 다른 단어 3개 이상)이 나올 때까지 다시 굴린다.
+ * 무작위 판의 98% 이상이 이 조건을 이미 만족하므로 보통 1회로 끝난다.
  * @param {string[][]} faceSets 주사위별 6면 글자
  * @param {number[]} indices 다시 굴릴 주사위 인덱스
  * @param {string[]} base 현재 눈
- * @returns {string[]} 새 눈 (80회 안에 못 찾으면 마지막 결과)
+ * @returns {string[]} 새 눈
  */
 function rollPlayable(faceSets, indices, base) {
-  for (let attempt = 0; attempt < 80; attempt++) {
+  for (let attempt = 0; attempt < 120; attempt++) {
     const board = rollFaces(faceSets, indices, base);
-    if (boardHasWord(board)) return board;
+    if (isPlayable(board)) return board;
   }
-  return rollFaces(faceSets, indices, base);
+  // 고정된(플레이어가 안 쓴) 주사위들 때문에 막힌 경우 — 전체를 다시 굴려서라도
+  // 풀 만한 판을 만든다. 위 루프가 사실상 항상 성공하므로 여기까지 오는 일은 거의 없다.
+  const all = faceSets.map((_, i) => i);
+  for (let attempt = 0; attempt < 400; attempt++) {
+    const board = rollFaces(faceSets, all, base);
+    if (isPlayable(board)) return board;
+  }
+  return rollFaces(faceSets, all, base);
 }
 
 // ---- 개인 통계 (이 브라우저에만 저장, 날짜와 무관하게 누적) ----
@@ -764,7 +793,7 @@ export default function WordiceGame() {
       setStats(recordSolve(seedStr, rolls));
     } else {
       setRolls((r) => r + 1);
-      setGuessMsg(`${g} isn't the hidden word — that cost you a roll`);
+      setGuessMsg(`${g} isn't today's word — that cost you a roll`);
     }
     setGuess('');
   }, [guess, secretWord, rolls, seedStr]);
