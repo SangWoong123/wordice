@@ -741,9 +741,9 @@ export default function WordiceGame() {
     }
     setLog((p) => [draft, ...p]);
     setRolls((r) => r + 1);
+    playChime(audioRef); // 유효한 단어를 만들 때마다 — 클루 글자 여부는 이펙트로 이미 보인다
     if (fresh.length) {
       launchFlights(fresh);
-      playChime(audioRef);
       setFoundOrder((p) => [...p, ...fresh]);
     }
     setStatus(fresh.length ? `${draft} — new clue letter ${fresh.join(', ')}` : `${draft} — dice rerolled`);
