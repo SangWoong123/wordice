@@ -11,6 +11,14 @@ const ON_ACCENT = '#12160F';
 const SERIF = "'Instrument Serif', serif";
 const MONO = "'JetBrains Mono', monospace";
 
+// 공유물(텍스트·이미지)에 박아둘 주소. 배포 위치를 그대로 따라가고,
+// 서버 사이드/테스트 등 window 가 없을 때만 배포 도메인으로 폴백한다.
+const SITE_ORIGIN =
+  typeof window !== 'undefined' && window.location?.origin
+    ? window.location.origin
+    : 'https://wordice.wordnook.workers.dev';
+const SITE_HOST = SITE_ORIGIN.replace(/^https?:\/\//, '');
+
 /* 여러 컴포넌트에 그대로 복사돼 있던 인라인 스타일을 한곳으로 모았다. */
 const monoFont = (size, weight = 400) => `${weight} ${size}px ${MONO}`;
 const serifFont = (size, italic = false) => `400 ${italic ? 'italic ' : ''}${size}px ${SERIF}`;
@@ -799,8 +807,11 @@ export default function WordiceGame() {
   }, [guess, secretWord, rolls, seedStr]);
 
   const shareText = useCallback(() => {
-    if (solved) return `Wordice #${puzzleNo}\n${squaresOf(confirmed)}\nSolved in ${rolls} rolls.`;
-    return `Wordice #${puzzleNo}\nDice: ${letters.join(' ')}\nWhat word do you think it is?`;
+    // 풀고 나서 = 결과 자랑 / 아직 못 풀었을 때 = "이 여섯 글자, 단어 보여?" 도전장
+    if (solved) {
+      return `Wordice #${puzzleNo}\n${squaresOf(confirmed)}\nSolved in ${rolls} rolls.\n${SITE_ORIGIN}`;
+    }
+    return `Wordice #${puzzleNo}\n🎲 ${letters.join(' ')}\nStuck here — can you spot a word?\n${SITE_ORIGIN}`;
   }, [solved, puzzleNo, confirmed, rolls, letters]);
 
   const drawCard = useCallback(
@@ -808,7 +819,7 @@ export default function WordiceGame() {
       new Promise((resolve) => {
         const c = canvasRef.current;
         const W = 640;
-        const H = solved ? 320 : 460;
+        const H = solved ? 344 : 476; // 아래 주소 한 줄 만큼 키움
         c.width = W;
         c.height = H;
         const x = c.getContext('2d');
@@ -867,8 +878,13 @@ export default function WordiceGame() {
 
           x.fillStyle = CREAM;
           x.font = serifFont(34);
-          x.fillText('What word do you think it is?', W / 2, 400);
+          x.fillText('Stuck here — can you spot a word?', W / 2, 400);
         }
+
+        // 이미지만 전달되는 채널(인스타·카톡 이미지 등)에서도 찾아올 수 있게 주소를 남긴다
+        x.fillStyle = 'rgba(240,237,228,.5)';
+        x.font = monoFont(13);
+        x.fillText(SITE_HOST, W / 2, H - 24);
 
         c.toBlob(resolve, 'image/png');
       }),
