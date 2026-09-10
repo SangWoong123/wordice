@@ -4,7 +4,6 @@ import { Share2, BarChart3, HelpCircle } from 'lucide-react';
 const ACCENT = 'oklch(0.60 0.15 140)';
 const ACCENT_HOVER = 'oklch(0.68 0.15 140)';
 const ACCENT_HEX = '#4A9E4E';
-const FOUND_HEX = '#D9A628';
 const INK = '#1B1A16';
 const CREAM = '#F0EDE4';
 const ON_ACCENT = '#12160F';
@@ -17,7 +16,6 @@ const SITE_ORIGIN =
   typeof window !== 'undefined' && window.location?.origin
     ? window.location.origin
     : 'https://wordice.wordnook.workers.dev';
-const SITE_HOST = SITE_ORIGIN.replace(/^https?:\/\//, '');
 
 /* 여러 컴포넌트에 그대로 복사돼 있던 인라인 스타일을 한곳으로 모았다. */
 const monoFont = (size, weight = 400) => `${weight} ${size}px ${MONO}`;
@@ -232,12 +230,9 @@ function buildConfirmed(secretWord, foundOrder) {
   });
 }
 
-// 확인된 자리 / 못 맞힌 자리의 표기. 모달 범례 · 공유 문구 · 공유 이미지가
-// 같은 상수를 보게 해서 예전처럼 서로 어긋나지 않게 한다.
+// 확인된 자리 / 못 맞힌 자리의 표기. 모달 범례와 공유 문구가 같은 상수를 본다.
 const SQ_CONFIRMED = '🟨';
 const SQ_BLIND = '🟩';
-const HEX_CONFIRMED = FOUND_HEX;
-const HEX_BLIND = ACCENT_HEX;
 
 /** @param {boolean[]} confirmed @returns {string} 공유용 이모지 줄 */
 const squaresOf = (confirmed) => confirmed.map((ok) => (ok ? SQ_CONFIRMED : SQ_BLIND)).join('');
@@ -571,7 +566,7 @@ function WinModal({ secretWord, confirmed, rolls, wordsMade, onShare, onClose, c
       </p>
       <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
         <button type="button" onClick={onShare} style={solidBtn(copied ? ACCENT : INK, copied ? ON_ACCENT : CREAM)}>
-          {copied ? 'image copied — paste it anywhere' : 'share'}
+          {copied ? 'copied — paste it anywhere' : 'share'}
         </button>
         <button type="button" onClick={onClose} style={outlineBtn(INK, 'rgba(27,26,22,.3)')}>
           close
@@ -643,7 +638,6 @@ export default function WordiceGame() {
   const [copied, setCopied] = useState(false);
   const [restored, setRestored] = useState(false);
   const [flights, setFlights] = useState([]);
-  const canvasRef = useRef(null);
   const dieRefs = useRef([]);
   const wordZoneRef = useRef(null);
   const audioRef = useRef(null);
@@ -811,125 +805,41 @@ export default function WordiceGame() {
     if (solved) {
       return `Wordice #${puzzleNo}\n${squaresOf(confirmed)}\nSolved in ${rolls} rolls.\n${SITE_ORIGIN}`;
     }
-    return `Wordice #${puzzleNo}\n🎲 ${letters.join(' ')}\nStuck here — can you spot a word?\n${SITE_ORIGIN}`;
+    // 실제 주사위 배치(3×2)와 공유 이미지에 맞춰 두 줄로 나눈다
+    const row1 = letters.slice(0, 3).join(' ');
+    const row2 = letters.slice(3).join(' ');
+    return `Wordice #${puzzleNo}\n🎲 ${row1}\n   ${row2}\nStuck here — can you spot a word?\n${SITE_ORIGIN}`;
   }, [solved, puzzleNo, confirmed, rolls, letters]);
 
-  const drawCard = useCallback(
-    () =>
-      new Promise((resolve) => {
-        const c = canvasRef.current;
-        const W = 640;
-        const H = solved ? 344 : 476; // 아래 주소 한 줄 만큼 키움
-        c.width = W;
-        c.height = H;
-        const x = c.getContext('2d');
-
-        x.fillStyle = INK;
-        x.fillRect(0, 0, W, H);
-        x.textAlign = 'center';
-
-        x.fillStyle = CREAM;
-        x.font = serifFont(40);
-        x.fillText('Wordice', W / 2, 62);
-        x.fillStyle = 'rgba(240,237,228,.6)';
-        x.font = monoFont(14);
-        x.fillText(`#${puzzleNo} · ${seedStr} UTC`, W / 2, 88);
-
-        if (solved) {
-          // one square per letter of the secret word — yellow if that specific
-          // occurrence was actually confirmed through play before calling it
-          const size = 80;
-          const gap = 14;
-          const startX = (W - (size * confirmed.length + gap * (confirmed.length - 1))) / 2;
-          const y = 120;
-          confirmed.forEach((ok, i) => {
-            const dx = startX + i * (size + gap);
-            x.fillStyle = ok ? HEX_CONFIRMED : HEX_BLIND;
-            x.fillRect(dx, y, size, size);
-          });
-
-          x.fillStyle = ACCENT_HEX;
-          x.font = monoFont(40, 500);
-          x.fillText(`solved in ${rolls} rolls`, W / 2, 270);
-        } else {
-          // 3x2 grid
-          const size = 96;
-          const gapX = 16;
-          const gapY = 16;
-          const cols = 3;
-          const totalW = size * cols + gapX * (cols - 1);
-          const startX = (W - totalW) / 2;
-          const rowY = [118, 118 + size + gapY];
-          letters.forEach((l, i) => {
-            const row = Math.floor(i / cols);
-            const col = i % cols;
-            const dx = startX + col * (size + gapX);
-            const dy = rowY[row];
-            x.fillStyle = CREAM;
-            x.fillRect(dx, dy, size, size);
-            x.fillStyle = 'rgba(0,0,0,.45)';
-            x.fillRect(dx, dy + size, size, 5);
-            x.fillStyle = INK;
-            x.font = serifFont(46);
-            x.textBaseline = 'middle';
-            x.fillText(l, dx + size / 2, dy + size / 2 + 2);
-            x.textBaseline = 'alphabetic';
-          });
-
-          x.fillStyle = CREAM;
-          x.font = serifFont(34);
-          x.fillText('Stuck here — can you spot a word?', W / 2, 400);
-        }
-
-        // 이미지만 전달되는 채널(인스타·카톡 이미지 등)에서도 찾아올 수 있게 주소를 남긴다
-        x.fillStyle = 'rgba(240,237,228,.5)';
-        x.font = monoFont(13);
-        x.fillText(SITE_HOST, W / 2, H - 24);
-
-        c.toBlob(resolve, 'image/png');
-      }),
-    [letters, solved, rolls, puzzleNo, seedStr, confirmed]
-  );
-
+  // 텍스트로만 공유한다 — 주소가 눌리는 형태가 유입에 제일 낫고, 이미지 공유는
+  // 브라우저별 지원이 들쭉날쭉한 데다 이미지 속 주소는 클릭이 안 된다.
   const share = useCallback(async () => {
     const flash = () => {
       setCopied(true);
       const t = setTimeout(() => setCopied(false), 1800);
       timers.current.push(t);
     };
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const text = shareText();
     try {
-      const blob = await drawCard();
-      const file = new File([blob], 'wordice.png', { type: 'image/png' });
-      if (isMobile && navigator.canShare?.({ files: [file] })) {
-        // mobile OS share sheets register real SNS apps (KakaoTalk, Instagram, etc.)
-        await navigator.share({ files: [file], text: shareText() });
-      } else if (navigator.clipboard && window.ClipboardItem) {
-        // desktop: copy the image so it can be pasted into any app/SNS directly
-        await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
-        try {
-          await navigator.clipboard.writeText(shareText());
-        } catch {}
-        flash();
-      } else if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], text: shareText() });
-      } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'wordice.png';
-        a.click();
-        URL.revokeObjectURL(url);
+      // 모바일: OS 공유 시트로 바로 SNS 선택 (카카오톡·인스타 등)
+      if (navigator.share && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        await navigator.share({ text });
+        return;
       }
-    } catch {
+      // 데스크톱: 클립보드에 복사해서 아무 데나 붙여넣게
+      await navigator.clipboard.writeText(text);
+      flash();
+    } catch (err) {
+      // 공유 시트를 사용자가 닫은 것뿐이면 조용히 넘어간다
+      if (err?.name === 'AbortError') return;
       try {
-        await navigator.clipboard.writeText(shareText());
+        await navigator.clipboard.writeText(text);
         flash();
       } catch {
         setStatus('sharing failed');
       }
     }
-  }, [drawCard, shareText]);
+  }, [shareText]);
 
   return (
     <div
@@ -1295,7 +1205,6 @@ export default function WordiceGame() {
 
       </div>
 
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
       {showStats && <StatsModal stats={stats} onClose={() => setShowStats(false)} />}
       {showWin && (
         <WinModal
