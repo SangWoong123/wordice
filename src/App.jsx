@@ -1,14 +1,63 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Share2, Trophy, HelpCircle } from 'lucide-react';
+import { Share2, BarChart3, HelpCircle } from 'lucide-react';
 
 const ACCENT = 'oklch(0.60 0.15 140)';
 const ACCENT_HOVER = 'oklch(0.68 0.15 140)';
 const ACCENT_HEX = '#4A9E4E';
+const FOUND_HEX = '#D9A628';
 const INK = '#1B1A16';
 const CREAM = '#F0EDE4';
 const ON_ACCENT = '#12160F';
 const SERIF = "'Instrument Serif', serif";
 const MONO = "'JetBrains Mono', monospace";
+
+/* 여러 컴포넌트에 그대로 복사돼 있던 인라인 스타일을 한곳으로 모았다. */
+const monoFont = (size, weight = 400) => `${weight} ${size}px ${MONO}`;
+const serifFont = (size, italic = false) => `400 ${italic ? 'italic ' : ''}${size}px ${SERIF}`;
+
+const BTN_BASE = {
+  font: monoFont(13),
+  letterSpacing: '.1em',
+  borderRadius: 3,
+  padding: '11px 20px',
+  cursor: 'pointer',
+  border: 0,
+};
+
+/** 채워진 버튼 */
+const solidBtn = (background, color, extra) => ({ ...BTN_BASE, background, color, border: `1px solid ${background}`, ...extra });
+
+/** 테두리만 있는 버튼 */
+const outlineBtn = (color, border, extra) => ({ ...BTN_BASE, background: 'transparent', color, border: `1px solid ${border}`, ...extra });
+
+/** 헤더의 원형 아이콘 버튼 (share / stats / how-to) */
+const iconBtn = (active) => ({
+  width: 32,
+  height: 32,
+  borderRadius: '50%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: active ? ACCENT : 'transparent',
+  border: '1px solid rgba(240,237,228,.25)',
+  cursor: 'pointer',
+  color: active ? ON_ACCENT : 'rgba(240,237,228,.75)',
+});
+
+const GHOST_BTN = outlineBtn('rgba(240,237,228,.75)', 'rgba(240,237,228,.25)', { background: 'none', padding: '10px 16px' });
+const CLOSE_BTN = { background: 'none', border: 0, cursor: 'pointer', font: monoFont(16), color: 'rgba(27,26,22,.6)' };
+const MODAL_HEAD = { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16 };
+const MUTED_SERIF = { font: serifFont(15, true), color: 'rgba(27,26,22,.62)', textAlign: 'center', padding: '28px 0' };
+const WORD_TILE = {
+  width: 30,
+  height: 38,
+  background: ACCENT,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  font: serifFont(22),
+  color: ON_ACCENT,
+};
 
 const DIE_COUNT = 6;
 const FACE_COUNT = 6;
@@ -96,6 +145,12 @@ function boardHasWord(letters) {
   return false;
 }
 
+/**
+ * 단어를 주사위에 한 글자씩 겹치지 않게 배치할 수 있는지 (이분 매칭).
+ * @param {string} word 대문자 단어
+ * @param {string[][]} faceSets 주사위별 6면 글자
+ * @returns {boolean}
+ */
 function canPlaceOnDice(word, faceSets) {
   if (word.length > faceSets.length) return false;
   const dieToLetter = new Array(faceSets.length).fill(-1);
@@ -115,6 +170,51 @@ function canPlaceOnDice(word, faceSets) {
   }
   return true;
 }
+
+/**
+ * 글자별 빈도. 예: "LATEST" -> {L:1,A:1,T:2,E:1,S:1}
+ * @param {string} word
+ * @returns {Record<string, number>}
+ */
+function letterFreq(word) {
+  const f = {};
+  for (const ch of word) f[ch] = (f[ch] || 0) + 1;
+  return f;
+}
+
+/**
+ * 정답 단어를 왼쪽부터 훑으며 각 글자의 앞 N개 자리를 "확인됨"으로 표시한다
+ * (N = 플레이로 실제 찾아낸 횟수). 중복 글자를 정직하게 다루기 위한 것 —
+ * 반복되는 글자를 한 번 찾았다면 그 중 한 자리만 확인된 것이다.
+ *
+ * WinModal · 공유 문구 · 공유 이미지가 모두 이 결과 하나를 나눠 쓴다.
+ * @param {string} secretWord 정답 단어 (대문자)
+ * @param {string[]} foundOrder 플레이로 확인한 글자들 (중복 포함)
+ * @returns {boolean[]} 정답 단어의 자리별 확인 여부
+ */
+function buildConfirmed(secretWord, foundOrder) {
+  const remaining = letterFreq(foundOrder.join(''));
+  return [...secretWord].map((ch) => {
+    if (remaining[ch] > 0) {
+      remaining[ch] -= 1;
+      return true;
+    }
+    return false;
+  });
+}
+
+// 확인된 자리 / 못 맞힌 자리의 표기. 모달 범례 · 공유 문구 · 공유 이미지가
+// 같은 상수를 보게 해서 예전처럼 서로 어긋나지 않게 한다.
+const SQ_CONFIRMED = '🟨';
+const SQ_BLIND = '🟩';
+const HEX_CONFIRMED = FOUND_HEX;
+const HEX_BLIND = ACCENT_HEX;
+
+/** @param {boolean[]} confirmed @returns {string} 공유용 이모지 줄 */
+const squaresOf = (confirmed) => confirmed.map((ok) => (ok ? SQ_CONFIRMED : SQ_BLIND)).join('');
+
+/** @param {boolean[]} confirmed @returns {number} 플레이로 확인된 자리 수 */
+const confirmedCount = (confirmed) => confirmed.reduce((n, ok) => n + (ok ? 1 : 0), 0);
 
 function getDailyDiceFaces() {
   const now = new Date();
@@ -148,6 +248,13 @@ function rollFaces(faceSets, indices, base) {
   return board;
 }
 
+/**
+ * 최소 한 단어는 만들 수 있는 눈이 나올 때까지 다시 굴린다.
+ * @param {string[][]} faceSets 주사위별 6면 글자
+ * @param {number[]} indices 다시 굴릴 주사위 인덱스
+ * @param {string[]} base 현재 눈
+ * @returns {string[]} 새 눈 (80회 안에 못 찾으면 마지막 결과)
+ */
 function rollPlayable(faceSets, indices, base) {
   for (let attempt = 0; attempt < 80; attempt++) {
     const board = rollFaces(faceSets, indices, base);
@@ -156,69 +263,105 @@ function rollPlayable(faceSets, indices, base) {
   return rollFaces(faceSets, indices, base);
 }
 
-async function fetchBoard(key) {
+// ---- 개인 통계 (이 브라우저에만 저장, 날짜와 무관하게 누적) ----
+// 서버로 보내는 경로는 없다.
+
+const STATS_KEY = 'wd_stats';
+
+/**
+ * @typedef {object} Stats
+ * @property {number} totalSolved 맞힌 날 수
+ * @property {number} currentStreak 마지막 정답 시점의 연속 기록
+ * @property {number} maxStreak 최고 연속 기록
+ * @property {string|null} lastSolvedDay 마지막으로 맞힌 UTC 날짜
+ * @property {number|null} bestRolls 최소 롤 수
+ * @property {number} totalRolls 누적 롤 수 (평균 계산용)
+ */
+
+/** @type {Stats} */
+const EMPTY_STATS = {
+  totalSolved: 0,
+  currentStreak: 0,
+  maxStreak: 0,
+  lastSolvedDay: null,
+  bestRolls: null,
+  totalRolls: 0,
+};
+
+/**
+ * 저장된 통계를 읽는다. 값이 없거나 깨졌거나 예전 버전이 일부 필드만
+ * 남겼더라도 항상 온전한 Stats 를 돌려준다.
+ * @returns {Stats}
+ */
+function loadStats() {
   try {
-    if (!window.storage) return [];
-    const res = await window.storage.get(key, true);
-    return res?.value ? JSON.parse(res.value) : [];
+    const parsed = JSON.parse(localStorage.getItem(STATS_KEY));
+    return parsed && typeof parsed === 'object' ? { ...EMPTY_STATS, ...parsed } : { ...EMPTY_STATS };
   } catch {
-    return [];
+    return { ...EMPTY_STATS };
   }
 }
 
-async function upsertBoard(key, entry, asc) {
+function daysBetween(aStr, bStr) {
+  const a = Date.parse(`${aStr}T00:00:00Z`);
+  const b = Date.parse(`${bStr}T00:00:00Z`);
+  return Math.round((a - b) / 86400000);
+}
+
+/**
+ * 정답을 맞혔을 때 개인 통계를 갱신하고 저장한다.
+ * 같은 날 여러 번 호출해도 하루치로만 집계된다 (새로고침 후 복원 등).
+ * @param {string} seedStr 오늘의 UTC 날짜
+ * @param {number} rolls 사용한 롤 수
+ * @returns {Stats} 갱신된 통계
+ */
+function recordSolve(seedStr, rolls) {
+  const s = loadStats();
+  const isNewDay = s.lastSolvedDay !== seedStr;
+  if (isNewDay) {
+    s.currentStreak = s.lastSolvedDay && daysBetween(seedStr, s.lastSolvedDay) === 1 ? s.currentStreak + 1 : 1;
+    s.maxStreak = Math.max(s.maxStreak, s.currentStreak);
+    s.totalSolved += 1;
+    s.lastSolvedDay = seedStr;
+    s.totalRolls += rolls;
+    s.bestRolls = s.bestRolls === null ? rolls : Math.min(s.bestRolls, rolls);
+  }
   try {
-    if (!window.storage) return;
-    const list = await fetchBoard(key);
-    const prev = list.find((e) => e.name === entry.name);
-    // keep the player's best result — never let a weaker later run overwrite it
-    if (prev && (asc ? prev.value <= entry.value : prev.value >= entry.value)) return;
-    const next = list.filter((e) => e.name !== entry.name);
-    next.push(entry);
-    next.sort((a, b) => (asc ? a.value - b.value : b.value - a.value));
-    await window.storage.set(key, JSON.stringify(next.slice(0, 25)), true);
+    localStorage.setItem(STATS_KEY, JSON.stringify(s));
   } catch {}
+  return s;
 }
 
-// guest#8e92 — hex suffix keeps accidental collisions rare
-function makeGuestName() {
-  const hex = Math.floor(Math.random() * 0x10000)
-    .toString(16)
-    .padStart(4, '0');
-  return `guest#${hex}`;
-}
+// ---- 하루 진행 상황 저장/복원 (개인 저장소 — 이 브라우저에만) ----
 
-const BANNED = [
-  'fuck', 'shit', 'bitch', 'cunt', 'nigg', 'faggot', 'whore', 'slut', 'rape', 'nazi', 'retard',
-  'dick', 'cock', 'pussy', 'asshole', 'bastard',
-  '시발', '씨발', '개새', '병신', '좆', '섹스', '보지', '자지', 'ميحاء',
-];
+const PROGRESS_PREFIX = 'wd_progress_';
+const HOWTO_KEY = 'wd_seen_howto';
 
-function validateName(raw) {
-  const name = raw.trim().replace(/\s+/g, ' ');
-  if (!name) return { ok: false, msg: 'name cannot be empty' };
-  if (name.length < 2) return { ok: false, msg: 'at least 2 characters' };
-  if (name.length > 12) return { ok: false, msg: 'max 12 characters' };
-  if (!/^[\w#\-.가-힣]+$/u.test(name)) return { ok: false, msg: 'letters, numbers, - _ # only' };
-  const flat = name.toLowerCase().replace(/[^a-z가-힣]/g, '');
-  if (BANNED.some((w) => flat.includes(w))) return { ok: false, msg: 'please pick another name' };
-  return { ok: true, name };
-}
-
-// ---- 하루 진행 상황 저장/복원 (개인 저장소) ----
-async function loadProgress(seedStr) {
+/** @param {string} seedStr @returns {object|null} */
+function loadProgress(seedStr) {
   try {
-    if (!window.storage) return null;
-    const res = await window.storage.get(`wd_progress_${seedStr}`, false);
-    return res?.value ? JSON.parse(res.value) : null;
+    const raw = localStorage.getItem(PROGRESS_PREFIX + seedStr);
+    return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
-async function saveProgress(seedStr, data) {
+/** @param {string} seedStr @param {object} data */
+function saveProgress(seedStr, data) {
   try {
-    await window.storage?.set(`wd_progress_${seedStr}`, JSON.stringify(data), false);
+    localStorage.setItem(PROGRESS_PREFIX + seedStr, JSON.stringify(data));
+  } catch {}
+}
+
+// 지난 날짜의 진행 상황과 순위표 시절의 닉네임은 다시 쓸 일이 없다 — 저장소가
+// 계속 불어나지 않게 한 번 정리한다.
+function pruneStorage(seedStr) {
+  try {
+    localStorage.removeItem('nickname');
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith(PROGRESS_PREFIX) && k !== PROGRESS_PREFIX + seedStr) localStorage.removeItem(k);
+    }
   } catch {}
 }
 
@@ -249,12 +392,6 @@ function playChime(ctxRef) {
       osc.stop(now + t + 0.45);
     });
   } catch {}
-}
-
-function utcDayString(d = new Date()) {  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(
-    2,
-    '0'
-  )}`;
 }
 
 function Die({ letter, isSel, isRolling, onClick }) {
@@ -290,93 +427,57 @@ function Die({ letter, isSel, isRolling, onClick }) {
   );
 }
 
-function RankModal({ seedStr, puzzleNo, myName, onClose }) {
-  const [tab, setTab] = useState('speed');
-  const [rows, setRows] = useState(null);
-
-  useEffect(() => {
-    let live = true;
-    setRows(null);
-    fetchBoard(`${tab}_${seedStr}`).then((r) => live && setRows(r));
-    return () => {
-      live = false;
-    };
-  }, [tab, seedStr]);
-
-  const tabStyle = (active) => ({
-    flex: 1,
-    font: `400 12px ${MONO}`,
-    letterSpacing: '.1em',
-    padding: '9px 0',
-    cursor: 'pointer',
-    border: `1px solid ${active ? ACCENT : 'rgba(27,26,22,.25)'}`,
-    background: active ? ACCENT : 'transparent',
-    color: active ? ON_ACCENT : 'rgba(27,26,22,.7)',
-    borderRadius: 3,
-  });
-
+/** 모달 3종이 공유하는 껍데기 (배경 클릭 닫기 + 제목줄) */
+function ModalShell({ title, onClose, style, children }) {
   return (
     <div className="wd-backdrop" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="wd-modal" onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16 }}>
-          <span style={{ font: `400 26px ${SERIF}`, color: INK }}>Leaderboard</span>
-          <button
-            onClick={onClose}
-            aria-label="close"
-            style={{ background: 'none', border: 0, cursor: 'pointer', font: `400 16px ${MONO}`, color: 'rgba(27,26,22,.6)' }}
-          >
-            ✕
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button onClick={() => setTab('speed')} style={tabStyle(tab === 'speed')}>
-            fewest rolls
-          </button>
-          <button onClick={() => setTab('count')} style={tabStyle(tab === 'count')}>
-            most words
-          </button>
-        </div>
-
-        <div style={{ font: `400 11px ${MONO}`, color: 'rgba(27,26,22,.6)', marginBottom: 10 }}>
-          #{puzzleNo} · {seedStr} UTC
-        </div>
-
-        {rows === null ? (
-          <p style={{ font: `400 12px ${MONO}`, color: 'rgba(27,26,22,.5)', textAlign: 'center', padding: '28px 0' }}>
-            loading…
-          </p>
-        ) : rows.length === 0 ? (
-          <p style={{ font: `400 italic 15px ${SERIF}`, color: 'rgba(27,26,22,.62)', textAlign: 'center', padding: '28px 0' }}>
-            No entries yet today. Be the first.
-          </p>
-        ) : (
-          <ol style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 260, overflowY: 'auto' }}>
-            {rows.map((r, i) => (
-              <li
-                key={r.name}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '9px 10px',
-                  borderBottom: '1px solid rgba(27,26,22,.1)',
-                  background: r.name === myName ? 'rgba(74,158,78,.14)' : 'transparent',
-                }}
-              >
-                <span style={{ font: `400 13px ${MONO}`, color: INK }}>
-                  <span style={{ color: 'rgba(27,26,22,.45)', marginRight: 10 }}>{String(i + 1).padStart(2, '0')}</span>
-                  {r.name}
-                </span>
-                <span style={{ font: `400 13px ${MONO}`, color: 'rgba(27,26,22,.75)' }}>
-                  {r.value} {tab === 'speed' ? 'rolls' : 'words'}
-                </span>
-              </li>
-            ))}
-          </ol>
+      <div className="wd-modal" onClick={(e) => e.stopPropagation()} style={style}>
+        {title && (
+          <div style={MODAL_HEAD}>
+            <span style={{ font: serifFont(26), color: INK }}>{title}</span>
+            <button onClick={onClose} aria-label="close" style={CLOSE_BTN}>
+              ✕
+            </button>
+          </div>
         )}
+        {children}
       </div>
     </div>
+  );
+}
+
+function StatsModal({ stats, onClose }) {
+  const avg = stats.totalSolved > 0 ? Math.round(stats.totalRolls / stats.totalSolved) : null;
+
+  const cell = (label, value) => (
+    <div key={label} style={{ textAlign: 'center', flex: 1 }}>
+      <div style={{ font: serifFont(32), color: INK }}>{value ?? '—'}</div>
+      <div style={{ font: monoFont(10), letterSpacing: '.08em', color: 'rgba(27,26,22,.6)', marginTop: 4 }}>{label}</div>
+    </div>
+  );
+
+  return (
+    <ModalShell title="Your stats" onClose={onClose}>
+      {stats.totalSolved === 0 ? (
+        <p style={MUTED_SERIF}>Solve today's word to start your record.</p>
+      ) : (
+        <>
+          <div style={{ display: 'flex', padding: '10px 0 22px' }}>
+            {cell('solved', stats.totalSolved)}
+            {cell('streak', stats.currentStreak)}
+            {cell('best streak', stats.maxStreak)}
+          </div>
+          <div style={{ display: 'flex', borderTop: '1px solid rgba(27,26,22,.14)', paddingTop: 18 }}>
+            {cell('best rolls', stats.bestRolls)}
+            {cell('avg rolls', avg)}
+          </div>
+        </>
+      )}
+
+      <p style={{ font: monoFont(11), color: 'rgba(27,26,22,.5)', marginTop: 22, textAlign: 'center' }}>
+        kept on this device only
+      </p>
+    </ModalShell>
   );
 }
 
@@ -416,61 +517,30 @@ function Confetti() {
   );
 }
 
-function WinModal({ secretWord, foundOrder, rolls, wordsMade, onShare, onClose, copied }) {
-  const usedSet = new Set(foundOrder);
-  const squares = [...secretWord].map((ch) => (usedSet.has(ch) ? '🟩' : '⬜'));
-
+function WinModal({ secretWord, confirmed, rolls, wordsMade, onShare, onClose, copied }) {
   return (
-    <div className="wd-backdrop" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="wd-modal" onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
-        <Confetti />
-        <div style={{ font: `500 11px ${MONO}`, letterSpacing: '.18em', color: 'rgba(27,26,22,.55)' }}>SOLVED</div>
-        <div style={{ font: `400 22px ${SERIF}`, color: ACCENT_HEX, margin: '2px 0 0' }}>🎉 You got it!</div>
-        <div style={{ font: `400 48px ${SERIF}`, color: INK, margin: '8px 0 4px' }}>{secretWord}</div>
-        <div style={{ fontSize: 28, letterSpacing: 6, margin: '10px 0 14px' }}>{squares.join('')}</div>
-        <p style={{ font: `400 12px ${MONO}`, color: 'rgba(27,26,22,.68)', margin: '0 0 20px', lineHeight: 1.7 }}>
-          🟩 letters you'd actually used in a word before calling it
-          <br />
-          ⬜ letters you called blind, no word ever confirmed them
-          <br />
-          {foundOrder.length}/{secretWord.length} confirmed by play · {rolls} rolls · {wordsMade} words made
-        </p>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-          <button
-            type="button"
-            onClick={onShare}
-            style={{
-              font: `400 13px ${MONO}`,
-              letterSpacing: '.1em',
-              color: copied ? ON_ACCENT : CREAM,
-              background: copied ? ACCENT : INK,
-              border: 0,
-              borderRadius: 3,
-              padding: '11px 20px',
-              cursor: 'pointer',
-            }}
-          >
-            {copied ? 'image copied — paste it anywhere' : 'share'}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              font: `400 13px ${MONO}`,
-              letterSpacing: '.1em',
-              color: INK,
-              background: 'transparent',
-              border: '1px solid rgba(27,26,22,.3)',
-              borderRadius: 3,
-              padding: '11px 20px',
-              cursor: 'pointer',
-            }}
-          >
-            close
-          </button>
-        </div>
+    <ModalShell onClose={onClose} style={{ textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
+      <Confetti />
+      <div style={{ font: monoFont(11, 500), letterSpacing: '.18em', color: 'rgba(27,26,22,.55)' }}>SOLVED</div>
+      <div style={{ font: serifFont(22), color: ACCENT_HEX, margin: '2px 0 0' }}>🎉 You got it!</div>
+      <div style={{ font: serifFont(48), color: INK, margin: '8px 0 4px' }}>{secretWord}</div>
+      <div style={{ fontSize: 28, letterSpacing: 6, margin: '10px 0 14px' }}>{squaresOf(confirmed)}</div>
+      <p style={{ font: monoFont(12), color: 'rgba(27,26,22,.68)', margin: '0 0 20px', lineHeight: 1.7 }}>
+        {SQ_CONFIRMED} letters you'd actually used in a word before calling it
+        <br />
+        {SQ_BLIND} letters you called blind, no word ever confirmed them
+        <br />
+        {confirmedCount(confirmed)}/{confirmed.length} confirmed by play · {rolls} rolls · {wordsMade} words made
+      </p>
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+        <button type="button" onClick={onShare} style={solidBtn(copied ? ACCENT : INK, copied ? ON_ACCENT : CREAM)}>
+          {copied ? 'image copied — paste it anywhere' : 'share'}
+        </button>
+        <button type="button" onClick={onClose} style={outlineBtn(INK, 'rgba(27,26,22,.3)')}>
+          close
+        </button>
       </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -483,71 +553,32 @@ function HowToModal({ onClose }) {
     borderRadius: '50%',
     background: ACCENT,
     color: ON_ACCENT,
-    font: `500 11px ${MONO}`,
+    font: monoFont(11, 500),
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
   };
   const txt = { font: `400 13px/1.6 ${MONO}`, color: 'rgba(27,26,22,.8)' };
+  const steps = [
+    <>Six dice, each with six fixed letters. Everyone gets the same dice every day.</>,
+    <>Tap dice in order to spell a word, then press <b>make word</b>.</>,
+    <>Dice you used reroll into new letters. That costs one roll.</>,
+    <>If your word contains a letter of the hidden word, that letter locks into <b>THE WORD</b>.</>,
+    <>Guess the hidden word in <b>call it</b>. A wrong guess costs a roll too.</>,
+  ];
 
   return (
-    <div className="wd-backdrop" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="wd-modal" onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16 }}>
-          <span style={{ font: `400 26px ${SERIF}`, color: INK }}>How to play</span>
-          <button
-            onClick={onClose}
-            aria-label="close"
-            style={{ background: 'none', border: 0, cursor: 'pointer', font: `400 16px ${MONO}`, color: 'rgba(27,26,22,.6)' }}
-          >
-            ✕
-          </button>
+    <ModalShell title="How to play" onClose={onClose}>
+      {steps.map((step, i) => (
+        <div key={i} style={i === steps.length - 1 ? { ...row, marginBottom: 20 } : row}>
+          <span style={num}>{i + 1}</span>
+          <span style={txt}>{step}</span>
         </div>
-
-        <div style={row}>
-          <span style={num}>1</span>
-          <span style={txt}>
-            Six dice, each with six fixed letters. Everyone gets the same dice every day.
-          </span>
-        </div>
-        <div style={row}>
-          <span style={num}>2</span>
-          <span style={txt}>Tap dice in order to spell a word, then press <b>make word</b>.</span>
-        </div>
-        <div style={row}>
-          <span style={num}>3</span>
-          <span style={txt}>Dice you used reroll into new letters. That costs one roll.</span>
-        </div>
-        <div style={row}>
-          <span style={num}>4</span>
-          <span style={txt}>
-            If your word contains a letter of the hidden word, that letter locks into <b>THE WORD</b>.
-          </span>
-        </div>
-        <div style={{ ...row, marginBottom: 20 }}>
-          <span style={num}>5</span>
-          <span style={txt}>Guess the hidden word in <b>call it</b>. A wrong guess costs a roll too.</span>
-        </div>
-
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            width: '100%',
-            font: `400 13px ${MONO}`,
-            letterSpacing: '.1em',
-            color: ON_ACCENT,
-            background: ACCENT,
-            border: 0,
-            borderRadius: 3,
-            padding: '11px 0',
-            cursor: 'pointer',
-          }}
-        >
-          got it
-        </button>
-      </div>
-    </div>
+      ))}
+      <button type="button" onClick={onClose} style={{ ...solidBtn(ACCENT, ON_ACCENT), width: '100%', padding: '11px 0' }}>
+        got it
+      </button>
+    </ModalShell>
   );
 }
 
@@ -568,16 +599,12 @@ export default function WordiceGame() {
   const [status, setStatus] = useState('');
   const [guessMsg, setGuessMsg] = useState('');
   const [solved, setSolved] = useState(false);
-  const [showRank, setShowRank] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  const [stats, setStats] = useState(loadStats);
   const [showWin, setShowWin] = useState(false);
   const [showHow, setShowHow] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [name, setName] = useState('');
-  const [editingName, setEditingName] = useState(false);
-  const [nameDraft, setNameDraft] = useState('');
-  const [nameMsg, setNameMsg] = useState('');
   const [restored, setRestored] = useState(false);
-  const [staleDay, setStaleDay] = useState(false);
   const [flights, setFlights] = useState([]);
   const canvasRef = useRef(null);
   const dieRefs = useRef([]);
@@ -585,11 +612,15 @@ export default function WordiceGame() {
   const audioRef = useRef(null);
   const flightId = useRef(0);
   const timers = useRef([]);
+  const spinner = useRef(null);
 
-  const clueSet = useMemo(() => new Set(secretWord), [secretWord]);
-  const found = useMemo(() => new Set(foundOrder), [foundOrder]);
+  const secretFreq = useMemo(() => letterFreq(secretWord), [secretWord]);
+  const foundCounts = useMemo(() => letterFreq(foundOrder.join('')), [foundOrder]);
 
   const draft = useMemo(() => sel.map((i) => letters[i]).join(''), [sel, letters]);
+
+  // 세 군데(모달·공유 문구·공유 이미지)에서 따로 부르던 것을 여기서 한 번만
+  const confirmed = useMemo(() => buildConfirmed(secretWord, foundOrder), [secretWord, foundOrder]);
 
   useEffect(() => {
     const link = document.createElement('link');
@@ -602,43 +633,31 @@ export default function WordiceGame() {
     };
   }, []);
 
-  useEffect(() => () => timers.current.forEach(clearTimeout), []);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        if (!window.storage) throw new Error();
-        const r = await window.storage.get('nickname', false);
-        setName(r.value);
-      } catch {
-        const gen = makeGuestName();
-        setName(gen);
-        try {
-          await window.storage?.set('nickname', gen, false);
-        } catch {}
-      }
-    })();
-  }, []);
+  useEffect(
+    () => () => {
+      timers.current.forEach(clearTimeout);
+      if (spinner.current) clearInterval(spinner.current);
+    },
+    []
+  );
 
   // restore today's progress, and show how-to on first ever visit
   useEffect(() => {
-    (async () => {
-      const saved = await loadProgress(seedStr);
-      if (saved) {
-        if (Array.isArray(saved.letters) && saved.letters.length === DIE_COUNT) setLetters(saved.letters);
-        if (Array.isArray(saved.log)) setLog(saved.log);
-        if (Array.isArray(saved.foundOrder)) setFoundOrder(saved.foundOrder);
-        if (typeof saved.rolls === 'number') setRolls(saved.rolls);
-        if (saved.solved) setSolved(true);
-      }
-      try {
-        const seen = await window.storage?.get('wd_seen_howto', false);
-        if (!seen?.value) setShowHow(true);
-      } catch {
-        setShowHow(true);
-      }
-      setRestored(true);
-    })();
+    const saved = loadProgress(seedStr);
+    if (saved) {
+      if (Array.isArray(saved.letters) && saved.letters.length === DIE_COUNT) setLetters(saved.letters);
+      if (Array.isArray(saved.log)) setLog(saved.log);
+      if (Array.isArray(saved.foundOrder)) setFoundOrder(saved.foundOrder);
+      if (typeof saved.rolls === 'number') setRolls(saved.rolls);
+      if (saved.solved) setSolved(true);
+    }
+    try {
+      if (!localStorage.getItem(HOWTO_KEY)) setShowHow(true);
+    } catch {
+      setShowHow(true);
+    }
+    pruneStorage(seedStr);
+    setRestored(true);
   }, [seedStr]);
 
   // autosave after every change (only once the restore pass has run)
@@ -647,50 +666,30 @@ export default function WordiceGame() {
     saveProgress(seedStr, { letters, log, foundOrder, rolls, solved });
   }, [restored, seedStr, letters, log, foundOrder, rolls, solved]);
 
-  // detect UTC day rollover while the tab stays open
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (utcDayString() !== seedStr) setStaleDay(true);
-    }, 30000);
-    return () => clearInterval(id);
-  }, [seedStr]);
-
-  const dismissHowTo = useCallback(async () => {
+  const dismissHowTo = useCallback(() => {
     setShowHow(false);
     try {
-      await window.storage?.set('wd_seen_howto', '1', false);
+      localStorage.setItem(HOWTO_KEY, '1');
     } catch {}
   }, []);
-
-  const saveName = useCallback(async () => {
-    const result = validateName(nameDraft);
-    if (!result.ok) {
-      setNameMsg(result.msg);
-      return;
-    }
-    setNameMsg('');
-    setName(result.name);
-    setEditingName(false);
-    try {
-      await window.storage?.set('nickname', result.name, false);
-    } catch {}
-  }, [nameDraft]);
 
   const reroll = useCallback(
     (indices) => {
       setRolling(indices);
       let ticks = 0;
-      const spin = setInterval(() => {
+      if (spinner.current) clearInterval(spinner.current);
+      spinner.current = setInterval(() => {
         ticks++;
         const f = {};
         indices.forEach((i) => {
           f[i] = faceSets[i][Math.floor(Math.random() * FACE_COUNT)];
         });
         setFlicker(f);
-        if (ticks > 18) clearInterval(spin);
+        if (ticks > 18) clearInterval(spinner.current);
       }, 58);
       const t = setTimeout(() => {
-        clearInterval(spin);
+        clearInterval(spinner.current);
+        spinner.current = null;
         setFlicker(null);
         setLetters((prev) => rollPlayable(faceSets, indices, prev));
         setRolling([]);
@@ -730,7 +729,16 @@ export default function WordiceGame() {
     if (draft.length < MIN_WORD) return setStatus('three dice minimum');
     if (log.includes(draft)) return setStatus('already made that one');
     if (!DICTIONARY.has(draft)) return setStatus(`"${draft}" isn't in the list`);
-    const fresh = [...new Set(draft)].filter((c) => clueSet.has(c) && !found.has(c));
+    // a repeated letter can be confirmed more than once — up to how many
+    // times it actually appears in the secret word (never fewer, never more)
+    const draftFreq = letterFreq(draft);
+    const fresh = [];
+    for (const c of Object.keys(draftFreq)) {
+      if (!secretFreq[c]) continue;
+      const remainingSlots = secretFreq[c] - (foundCounts[c] || 0);
+      const canAdd = Math.min(draftFreq[c], remainingSlots);
+      for (let i = 0; i < canAdd; i++) fresh.push(c);
+    }
     setLog((p) => [draft, ...p]);
     setRolls((r) => r + 1);
     if (fresh.length) {
@@ -739,11 +747,10 @@ export default function WordiceGame() {
       setFoundOrder((p) => [...p, ...fresh]);
     }
     setStatus(fresh.length ? `${draft} — new clue letter ${fresh.join(', ')}` : `${draft} — dice rerolled`);
-    if (name) upsertBoard(`count_${seedStr}`, { name, value: log.length + 1 }, false);
     const idxs = [...sel];
     setSel([]);
     reroll(idxs);
-  }, [draft, log, clueSet, found, sel, reroll, name, seedStr, launchFlights]);
+  }, [draft, log, secretFreq, foundCounts, sel, reroll, launchFlights]);
 
   const submitGuess = useCallback(() => {
     const g = guess.trim().toUpperCase();
@@ -754,22 +761,18 @@ export default function WordiceGame() {
       setSel([]);
       setGuessMsg('');
       setStatus(`${g} — that's it. Solved in ${rolls} rolls.`);
-      if (name) upsertBoard(`speed_${seedStr}`, { name, value: rolls }, true);
+      setStats(recordSolve(seedStr, rolls));
     } else {
       setRolls((r) => r + 1);
       setGuessMsg(`${g} isn't the hidden word — that cost you a roll`);
     }
     setGuess('');
-  }, [guess, secretWord, rolls, name, seedStr]);
+  }, [guess, secretWord, rolls, seedStr]);
 
   const shareText = useCallback(() => {
-    if (solved) {
-      const usedSet = new Set(foundOrder);
-      const squares = [...secretWord].map((ch) => (usedSet.has(ch) ? '🟩' : '⬜')).join('');
-      return `Wordice #${puzzleNo}\n${squares}\nSolved in ${rolls} rolls.`;
-    }
+    if (solved) return `Wordice #${puzzleNo}\n${squaresOf(confirmed)}\nSolved in ${rolls} rolls.`;
     return `Wordice #${puzzleNo}\nDice: ${letters.join(' ')}\nWhat word do you think it is?`;
-  }, [solved, puzzleNo, foundOrder, secretWord, rolls, letters]);
+  }, [solved, puzzleNo, confirmed, rolls, letters]);
 
   const drawCard = useCallback(
     () =>
@@ -786,28 +789,27 @@ export default function WordiceGame() {
         x.textAlign = 'center';
 
         x.fillStyle = CREAM;
-        x.font = `400 40px ${SERIF}`;
+        x.font = serifFont(40);
         x.fillText('Wordice', W / 2, 62);
         x.fillStyle = 'rgba(240,237,228,.6)';
-        x.font = `400 14px ${MONO}`;
+        x.font = monoFont(14);
         x.fillText(`#${puzzleNo} · ${seedStr} UTC`, W / 2, 88);
 
         if (solved) {
-          // one square per letter of the secret word — green if actually used before calling it
-          const usedSet = new Set(foundOrder);
-          const squares = [...secretWord];
+          // one square per letter of the secret word — yellow if that specific
+          // occurrence was actually confirmed through play before calling it
           const size = 80;
           const gap = 14;
-          const startX = (W - (size * squares.length + gap * (squares.length - 1))) / 2;
+          const startX = (W - (size * confirmed.length + gap * (confirmed.length - 1))) / 2;
           const y = 120;
-          squares.forEach((ch, i) => {
+          confirmed.forEach((ok, i) => {
             const dx = startX + i * (size + gap);
-            x.fillStyle = usedSet.has(ch) ? ACCENT_HEX : 'rgba(240,237,228,.25)';
+            x.fillStyle = ok ? HEX_CONFIRMED : HEX_BLIND;
             x.fillRect(dx, y, size, size);
           });
 
           x.fillStyle = ACCENT_HEX;
-          x.font = `500 40px ${MONO}`;
+          x.font = monoFont(40, 500);
           x.fillText(`solved in ${rolls} rolls`, W / 2, 270);
         } else {
           // 3x2 grid
@@ -828,20 +830,20 @@ export default function WordiceGame() {
             x.fillStyle = 'rgba(0,0,0,.45)';
             x.fillRect(dx, dy + size, size, 5);
             x.fillStyle = INK;
-            x.font = `400 46px ${SERIF}`;
+            x.font = serifFont(46);
             x.textBaseline = 'middle';
             x.fillText(l, dx + size / 2, dy + size / 2 + 2);
             x.textBaseline = 'alphabetic';
           });
 
           x.fillStyle = CREAM;
-          x.font = `400 34px ${SERIF}`;
+          x.font = serifFont(34);
           x.fillText('What word do you think it is?', W / 2, 400);
         }
 
         c.toBlob(resolve, 'image/png');
       }),
-    [letters, solved, rolls, puzzleNo, seedStr, foundOrder, secretWord]
+    [letters, solved, rolls, puzzleNo, seedStr, confirmed]
   );
 
   const share = useCallback(async () => {
@@ -883,17 +885,6 @@ export default function WordiceGame() {
       }
     }
   }, [drawCard, shareText]);
-
-  const ghostBtn = {
-    font: `400 13px ${MONO}`,
-    letterSpacing: '.1em',
-    color: 'rgba(240,237,228,.75)',
-    background: 'none',
-    border: '1px solid rgba(240,237,228,.25)',
-    borderRadius: 3,
-    padding: '10px 16px',
-    cursor: 'pointer',
-  };
 
   return (
     <div
@@ -1025,77 +1016,29 @@ export default function WordiceGame() {
             }}
           >
             <div style={{ position: 'absolute', top: 24, right: 24, display: 'flex', gap: 8 }}>
-            <button
-              type="button"
-              onClick={share}
-              aria-label="share result"
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: copied ? ACCENT : 'transparent',
-                border: '1px solid rgba(240,237,228,.25)',
-                cursor: 'pointer',
-                color: copied ? ON_ACCENT : 'rgba(240,237,228,.75)',
-              }}
-            >
-              <Share2 size={15} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowRank(true)}
-              aria-label="leaderboard"
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'transparent',
-                border: '1px solid rgba(240,237,228,.25)',
-                cursor: 'pointer',
-                color: 'rgba(240,237,228,.75)',
-              }}
-            >
-              <Trophy size={15} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowHow(true)}
-              aria-label="how to play"
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'transparent',
-                border: '1px solid rgba(240,237,228,.25)',
-                cursor: 'pointer',
-                color: 'rgba(240,237,228,.75)',
-              }}
-            >
-              <HelpCircle size={15} />
-            </button>
-          </div>
+              <button type="button" onClick={share} aria-label="share result" style={iconBtn(copied)}>
+                <Share2 size={15} />
+              </button>
+              <button type="button" onClick={() => setShowStats(true)} aria-label="your stats" style={iconBtn(false)}>
+                <BarChart3 size={15} />
+              </button>
+              <button type="button" onClick={() => setShowHow(true)} aria-label="how to play" style={iconBtn(false)}>
+                <HelpCircle size={15} />
+              </button>
+            </div>
 
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
               <span className="wd-title" style={{ fontFamily: SERIF, lineHeight: 1, color: CREAM }}>
                 Wordice
               </span>
-              <span style={{ font: `400 11px ${MONO}`, letterSpacing: '.12em', color: 'rgba(240,237,228,.62)' }}>
+              <span style={{ font: monoFont(11), letterSpacing: '.12em', color: 'rgba(240,237,228,.62)' }}>
                 #{puzzleNo}
               </span>
             </div>
             <p
               className="wd-subtitle"
               style={{
-                margin: '0 0 12px',
+                margin: '0 0 22px',
                 maxWidth: 'calc(100% - 130px)',
                 fontFamily: SERIF,
                 fontStyle: 'italic',
@@ -1104,109 +1047,6 @@ export default function WordiceGame() {
             >
               Six dice, one hidden word. Spend rolls to see letters.
             </p>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 22, flexWrap: 'wrap' }}>
-              {editingName ? (
-                <>
-                  <input
-                    autoFocus
-                    value={nameDraft}
-                    onChange={(e) => {
-                      setNameDraft(e.target.value.slice(0, 12));
-                      if (nameMsg) setNameMsg('');
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && saveName()}
-                    aria-label="nickname"
-                    aria-invalid={!!nameMsg}
-                    style={{
-                      width: 130,
-                      background: 'rgba(240,237,228,.1)',
-                      border: `1px solid ${nameMsg ? 'rgba(224,72,59,.8)' : 'rgba(240,237,228,.3)'}`,
-                      borderRadius: 3,
-                      padding: '5px 8px',
-                      font: `400 12px ${MONO}`,
-                      color: CREAM,
-                      outline: 'none',
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={saveName}
-                    style={{ background: 'none', border: 0, cursor: 'pointer', font: `400 12px ${MONO}`, color: ACCENT_HEX }}
-                  >
-                    save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingName(false);
-                      setNameMsg('');
-                    }}
-                    style={{ background: 'none', border: 0, cursor: 'pointer', font: `400 12px ${MONO}`, color: 'rgba(240,237,228,.45)' }}
-                  >
-                    cancel
-                  </button>
-                  {nameMsg && (
-                    <span style={{ font: `400 11px ${MONO}`, color: 'rgba(224,72,59,.95)' }} aria-live="polite">
-                      {nameMsg}
-                    </span>
-                  )}
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNameDraft(name);
-                    setEditingName(true);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 0,
-                    cursor: 'pointer',
-                    font: `400 12px ${MONO}`,
-                    color: 'rgba(240,237,228,.55)',
-                    padding: 0,
-                  }}
-                >
-                  {name || '…'} · edit ✎
-                </button>
-              )}
-            </div>
-
-            {staleDay && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 10,
-                  background: 'rgba(229,162,58,.15)',
-                  border: '1px solid rgba(229,162,58,.5)',
-                  borderRadius: 4,
-                  padding: '10px 12px',
-                  marginBottom: 18,
-                }}
-              >
-                <span style={{ font: `400 12px ${MONO}`, color: '#E5A23A' }}>
-                  A new puzzle is up (UTC day changed).
-                </span>
-                <button
-                  type="button"
-                  onClick={() => window.location.reload()}
-                  style={{
-                    font: `400 12px ${MONO}`,
-                    color: ON_ACCENT,
-                    background: '#E5A23A',
-                    border: 0,
-                    borderRadius: 3,
-                    padding: '6px 12px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  refresh
-                </button>
-              </div>
-            )}
 
             <div
               className="wd-dice"
@@ -1242,12 +1082,12 @@ export default function WordiceGame() {
                 marginTop: 26,
               }}
             >
-              <span style={{ font: `400 16px ${SERIF}`, color: 'rgba(240,237,228,.75)' }}>
+              <span style={{ font: serifFont(16), color: 'rgba(240,237,228,.75)' }}>
                 Selected:{' '}
                 <span style={{ color: CREAM, letterSpacing: '.1em' }}>{sel.map((i) => letters[i]).join(' ') || '—'}</span>
               </span>
               <div style={{ display: 'flex', gap: 10 }}>
-                <button type="button" className="wd-ghost" onClick={() => { setSel([]); setStatus(''); }} style={ghostBtn}>
+                <button type="button" className="wd-ghost" onClick={() => { setSel([]); setStatus(''); }} style={GHOST_BTN}>
                   clear
                 </button>
                 <button
@@ -1256,7 +1096,7 @@ export default function WordiceGame() {
                   onClick={makeWord}
                   disabled={rolling.length > 0}
                   style={{
-                    font: `400 13px ${MONO}`,
+                    font: monoFont(13),
                     letterSpacing: '.1em',
                     color: ON_ACCENT,
                     background: ACCENT,
@@ -1271,7 +1111,7 @@ export default function WordiceGame() {
               </div>
             </div>
 
-            <div style={{ marginTop: 14, font: `400 12px ${MONO}`, color: 'rgba(240,237,228,.7)', minHeight: 16 }}>
+            <div style={{ marginTop: 14, font: monoFont(12), color: 'rgba(240,237,228,.7)', minHeight: 16 }}>
               {status}
             </div>
           </div>
@@ -1281,7 +1121,7 @@ export default function WordiceGame() {
             <div>
               <div
                 style={{
-                  font: `500 10px ${MONO}`,
+                  font: monoFont(10, 500),
                   letterSpacing: '.16em',
                   color: 'rgba(27,26,22,.62)',
                   marginBottom: 8,
@@ -1290,52 +1130,26 @@ export default function WordiceGame() {
                 THE WORD · {secretWord.length}
               </div>
               <div ref={wordZoneRef} style={{ display: 'flex', gap: 5, marginBottom: 14, flexWrap: 'wrap' }}>
-                {solved
-                  ? [...secretWord].map((ch, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          width: 30,
-                          height: 38,
-                          background: ACCENT,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          font: `400 22px ${SERIF}`,
-                          color: ON_ACCENT,
-                        }}
-                      >
-                        {ch}
-                      </div>
-                    ))
-                  : foundOrder.length === 0 ? (
-                      <span style={{ font: `400 italic 14px ${SERIF}`, color: 'rgba(27,26,22,.5)' }}>
-                        No letters found yet.
-                      </span>
-                    ) : (
-                      foundOrder.map((ch) => (
-                        <div
-                          key={ch}
-                          style={{
-                            width: 30,
-                            height: 38,
-                            background: ACCENT,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            font: `400 22px ${SERIF}`,
-                            color: ON_ACCENT,
-                          }}
-                        >
-                          {ch}
-                        </div>
-                      ))
-                    )}
+                {solved ? (
+                  [...secretWord].map((ch, i) => (
+                    <div key={i} style={WORD_TILE}>
+                      {ch}
+                    </div>
+                  ))
+                ) : foundOrder.length === 0 ? (
+                  <span style={{ font: serifFont(14, true), color: 'rgba(27,26,22,.5)' }}>No letters found yet.</span>
+                ) : (
+                  foundOrder.map((ch, i) => (
+                    <div key={`${ch}-${i}`} style={WORD_TILE}>
+                      {ch}
+                    </div>
+                  ))
+                )}
               </div>
 
               {solved && (
-                <div style={{ font: `400 12px ${MONO}`, color: ACCENT_HEX }}>
-                  ✓ solved in {rolls} rolls — keep making words to climb the word count board
+                <div style={{ font: monoFont(12), color: ACCENT_HEX }}>
+                  ✓ solved in {rolls} rolls — keep making words if you're not done exploring
                 </div>
               )}
 
@@ -1358,7 +1172,7 @@ export default function WordiceGame() {
                         border: `1px solid ${guessMsg ? 'rgba(160,40,30,.55)' : 'rgba(27,26,22,.25)'}`,
                         borderRadius: 3,
                         padding: '10px 12px',
-                        font: `400 13px ${MONO}`,
+                        font: monoFont(13),
                         letterSpacing: '.14em',
                         textTransform: 'uppercase',
                         color: INK,
@@ -1369,7 +1183,7 @@ export default function WordiceGame() {
                       type="button"
                       onClick={submitGuess}
                       style={{
-                        font: `400 13px ${MONO}`,
+                        font: monoFont(13),
                         color: CREAM,
                         background: INK,
                         border: 0,
@@ -1387,7 +1201,7 @@ export default function WordiceGame() {
                     style={{
                       marginTop: 7,
                       minHeight: 15,
-                      font: `400 11px ${MONO}`,
+                      font: monoFont(11),
                       letterSpacing: '.04em',
                       color: 'rgba(160,40,30,.85)',
                     }}
@@ -1400,20 +1214,20 @@ export default function WordiceGame() {
 
             <div style={{ borderTop: '1px solid rgba(27,26,22,.14)', paddingTop: 20, flex: 1, display: 'flex', flexDirection: 'column' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
-                <span style={{ font: `500 10px ${MONO}`, letterSpacing: '.16em', color: 'rgba(27,26,22,.62)' }}>
+                <span style={{ font: monoFont(10, 500), letterSpacing: '.16em', color: 'rgba(27,26,22,.62)' }}>
                   MADE · {log.length}
                 </span>
-                <span style={{ font: `400 11px ${MONO}`, color: 'rgba(27,26,22,.6)' }}>rolls {rolls}</span>
+                <span style={{ font: monoFont(11), color: 'rgba(27,26,22,.6)' }}>rolls {rolls}</span>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignContent: 'flex-start', flex: 1, minHeight: 60, maxHeight: 320, overflowY: 'auto' }}>
                 {log.length === 0 ? (
-                  <span style={{ font: `400 italic 14px ${SERIF}`, color: 'rgba(27,26,22,.5)' }}>No words yet.</span>
+                  <span style={{ font: serifFont(14, true), color: 'rgba(27,26,22,.5)' }}>No words yet.</span>
                 ) : (
                   log.map((w, i) => (
                     <span
                       key={`${w}-${i}`}
                       style={{
-                        font: `400 12px ${MONO}`,
+                        font: monoFont(12),
                         letterSpacing: '.06em',
                         padding: '4px 8px',
                         border: '1px solid rgba(27,26,22,.2)',
@@ -1437,13 +1251,11 @@ export default function WordiceGame() {
       </div>
 
       <canvas ref={canvasRef} style={{ display: 'none' }} />
-      {showRank && (
-        <RankModal seedStr={seedStr} puzzleNo={puzzleNo} myName={name} onClose={() => setShowRank(false)} />
-      )}
+      {showStats && <StatsModal stats={stats} onClose={() => setShowStats(false)} />}
       {showWin && (
         <WinModal
           secretWord={secretWord}
-          foundOrder={foundOrder}
+          confirmed={confirmed}
           rolls={rolls}
           wordsMade={log.length}
           onShare={share}

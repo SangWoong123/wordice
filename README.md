@@ -1,16 +1,36 @@
-# React + Vite
+# Wordice
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+매일 같은 주사위 6개, 숨은 단어 하나. 단어를 만들어 클루 글자를 확인하고 정답을 맞히는 데일리 퍼즐.
 
-Currently, two official plugins are available:
+```bash
+npm install
+npm run dev     # 개발 서버
+npm run build   # 프로덕션 빌드 (dist/)
+npm run lint    # oxlint
+```
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Cloudflare Workers 정적 자산으로 배포되고, GitHub `main` 에 push 하면 자동 재배포된다.
 
-## React Compiler
+## 기록은 전부 로컬
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+공유 순위표는 없다. 모든 기록은 이 기기의 `localStorage` 에만 남고, 서버로 보내는 경로는 없다.
 
-## Expanding the Oxlint configuration
+| 키 | 내용 |
+| --- | --- |
+| `wd_stats` | 개인 통계 — 맞힌 날 수, 연속 정답(streak), 최고 연속, 최소/누적 롤 수 |
+| `wd_progress_<UTC날짜>` | 오늘 판의 진행 상황 (지난 날짜 키는 자동 정리) |
+| `wd_seen_howto` | 첫 방문 안내를 봤는지 |
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+시크릿 모드 등에서는 `localStorage` 접근 자체가 예외를 던질 수 있어 모든 읽기/쓰기가 감싸져 있다. 저장이 막혀도 게임은 그대로 돌아가고 기록만 남지 않는다. `loadStats()` 는 값이 깨졌거나 예전 버전이 일부 필드만 남겼더라도 항상 온전한 객체를 돌려준다.
+
+## 클루 확인 로직은 한 군데
+
+`buildConfirmed(secretWord, foundOrder)` 하나가 "정답 단어의 어느 자리가 플레이로 확인됐는가"를 판정하고, 승리 모달 · 공유 문구 · 공유 이미지가 **메모된 결과 하나**를 나눠 쓴다. 표기도 `SQ_CONFIRMED`/`SQ_BLIND`(이모지)와 `HEX_CONFIRMED`/`HEX_BLIND`(캔버스) 상수 한 쌍에서만 나오므로, 세 곳이 다시 어긋날 수 없다.
+
+중복 글자는 정직하게 다룬다 — `LATEST` 에서 `T` 를 한 번만 찾았다면 앞쪽 `T` 한 자리만 확인된 것으로 표시된다.
+
+## 사전을 번들에 그대로 두는 이유
+
+`WORD_LIST_STR` (26,578 단어) 는 소스에 인라인돼 있다. raw 164KB / gzip 59KB 로 번들 gzip 144KB 중 약 40% 를 차지한다.
+
+`public/` 로 빼서 fetch 하는 방안을 검토했지만 택하지 않았다. 첫 렌더에서 이미 사전이 필요하기 때문이다 — 초기 주사위는 `rollPlayable` → `boardHasWord` 로 "최소 한 단어는 만들 수 있는 눈"인지 검사해서 뽑고, 오늘의 정답 단어도 같은 시점에 결정된다. 분리하면 로딩 상태와 fetch 실패 폴백이 새로 필요해지는데, 하루 한 판짜리 게임에서 gzip 59KB 를 아끼려고 치르기에는 비싼 값이다. 사전이 이 규모를 크게 넘어서거나 첫 화면이 사전 없이도 그려지도록 바뀐다면 그때 다시 볼 것.
