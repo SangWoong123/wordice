@@ -15,7 +15,7 @@ const MONO = "'JetBrains Mono', monospace";
 const SITE_ORIGIN =
   typeof window !== 'undefined' && window.location?.origin
     ? window.location.origin
-    : 'https://wordice.wordnook.workers.dev';
+    : 'https://diceclue.diceclue.workers.dev';
 
 /* 여러 컴포넌트에 그대로 복사돼 있던 인라인 스타일을 한곳으로 모았다. */
 const monoFont = (size, weight = 400) => `${weight} ${size}px ${MONO}`;
@@ -283,10 +283,29 @@ function rollPlayable(faceSets, indices, base) {
   return rollFaces(faceSets, all, base);
 }
 
+// ---- 저장소 키 ----
+// Wordice → DiceClue 개명으로 접두사가 wd_ 에서 dc_ 로 바뀌었다. 예전 키에 남아
+// 있는 기록(스트릭·최고 기록·진행 상황)은 첫 로드 때 새 키로 한 번 옮긴다.
+const KEY_PREFIX = 'dc_';
+const LEGACY_KEY_PREFIX = 'wd_';
+
+function migrateLegacyStorage() {
+  try {
+    for (const key of Object.keys(localStorage)) {
+      if (!key.startsWith(LEGACY_KEY_PREFIX)) continue;
+      const moved = KEY_PREFIX + key.slice(LEGACY_KEY_PREFIX.length);
+      // 새 키에 이미 값이 있으면 그쪽이 최신이므로 건드리지 않는다
+      if (localStorage.getItem(moved) === null) localStorage.setItem(moved, localStorage.getItem(key));
+      localStorage.removeItem(key);
+    }
+  } catch {}
+}
+migrateLegacyStorage();
+
 // ---- 개인 통계 (이 브라우저에만 저장, 날짜와 무관하게 누적) ----
 // 서버로 보내는 경로는 없다.
 
-const STATS_KEY = 'wd_stats';
+const STATS_KEY = `${KEY_PREFIX}stats`;
 
 /**
  * @typedef {object} Stats
@@ -354,8 +373,8 @@ function recordSolve(seedStr, rolls) {
 
 // ---- 하루 진행 상황 저장/복원 (개인 저장소 — 이 브라우저에만) ----
 
-const PROGRESS_PREFIX = 'wd_progress_';
-const HOWTO_KEY = 'wd_seen_howto';
+const PROGRESS_PREFIX = `${KEY_PREFIX}progress_`;
+const HOWTO_KEY = `${KEY_PREFIX}seen_howto`;
 
 /** @param {string} seedStr @returns {object|null} */
 function loadProgress(seedStr) {
@@ -435,11 +454,11 @@ function Die({ letter, isSel, isRolling, onClick }) {
       disabled={isRolling}
       aria-pressed={isSel}
       aria-label={`Die ${letter}`}
-      className={`wd-die ${isRolling ? 'wd-rolling' : ''}`}
+      className={`dc-die ${isRolling ? 'dc-rolling' : ''}`}
       style={{ background: 'none', border: 0, padding: 0, cursor: isRolling ? 'default' : 'pointer' }}
     >
-      <div className="wd-tile" style={style}>
-        <span className="wd-letter" style={{ fontFamily: SERIF, color: INK }}>
+      <div className="dc-tile" style={style}>
+        <span className="dc-letter" style={{ fontFamily: SERIF, color: INK }}>
           {letter}
         </span>
       </div>
@@ -450,8 +469,8 @@ function Die({ letter, isSel, isRolling, onClick }) {
 /** 모달 3종이 공유하는 껍데기 (배경 클릭 닫기 + 제목줄) */
 function ModalShell({ title, onClose, style, children }) {
   return (
-    <div className="wd-backdrop" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="wd-modal" onClick={(e) => e.stopPropagation()} style={style}>
+    <div className="dc-backdrop" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="dc-modal" onClick={(e) => e.stopPropagation()} style={style}>
         {title && (
           <div style={MODAL_HEAD}>
             <span style={{ font: serifFont(26), color: INK }}>{title}</span>
@@ -518,7 +537,7 @@ function Confetti() {
     []
   );
   return (
-    <div className="wd-confetti" aria-hidden="true">
+    <div className="dc-confetti" aria-hidden="true">
       {bits.map((b) => (
         <span
           key={b.id}
@@ -602,7 +621,7 @@ function HowToModal({ onClose }) {
   );
 }
 
-export default function WordiceGame() {
+export default function DiceClueGame() {
   const [{ dice: faceSets, seedStr, puzzleNo, secretWord }] = useState(getDailyPuzzle);
 
   const [letters, setLetters] = useState(() =>
@@ -790,13 +809,13 @@ export default function WordiceGame() {
   const shareText = useCallback(() => {
     // 풀고 나서 = 결과 자랑 / 아직 못 풀었을 때 = "이 여섯 글자, 단어 보여?" 도전장
     if (solved) {
-      return `Wordice #${puzzleNo}\n${squaresOf(confirmed)}\nSolved in ${rolls} rolls.\n${SITE_ORIGIN}`;
+      return `DiceClue #${puzzleNo}\n${squaresOf(confirmed)}\nSolved in ${rolls} rolls.\n${SITE_ORIGIN}`;
     }
     // 3+3 두 줄. 앞뒤를 주사위로 감싸 양 줄을 같은 틀로 맞춘다 (비례폰트라
     // 글자별 폭은 달라도, 같은 위치에서 시작·끝나 격자처럼 읽힌다).
     const row1 = letters.slice(0, 3).join(' ');
     const row2 = letters.slice(3).join(' ');
-    return `Wordice #${puzzleNo}\n🎲 ${row1} 🎲\n🎲 ${row2} 🎲\nStuck here — can you spot a word?\n${SITE_ORIGIN}`;
+    return `DiceClue #${puzzleNo}\n🎲 ${row1} 🎲\n🎲 ${row2} 🎲\nStuck here — can you spot a word?\n${SITE_ORIGIN}`;
   }, [solved, puzzleNo, confirmed, rolls, letters]);
 
   // 텍스트로만 공유한다 — 주소가 눌리는 형태가 유입에 제일 낫고, 이미지 공유는
@@ -843,41 +862,41 @@ export default function WordiceGame() {
       }}
     >
       <style>{`
-        .wd-die:disabled { cursor: default; }
-        @keyframes wdShake {
+        .dc-die:disabled { cursor: default; }
+        @keyframes dcShake {
           0%   { transform: translateY(0) }
           30%  { transform: translateY(-8px) }
           60%  { transform: translateY(3px) }
           100% { transform: translateY(0) }
         }
-        .wd-rolling { animation: wdShake .56s ease; }
-        .wd-grid { display: grid; grid-template-columns: minmax(0,1fr) clamp(280px, 26vw, 380px); }
-        .wd-dice { display: grid; grid-template-columns: repeat(3, 88px); gap: 18px; justify-content: center; }
-        .wd-tile {
+        .dc-rolling { animation: dcShake .56s ease; }
+        .dc-grid { display: grid; grid-template-columns: minmax(0,1fr) clamp(280px, 26vw, 380px); }
+        .dc-dice { display: grid; grid-template-columns: repeat(3, 88px); gap: 18px; justify-content: center; }
+        .dc-tile {
           width: 88px; height: 88px; border-radius: 4px;
           display: flex; align-items: center; justify-content: center;
           transition: transform .09s ease, box-shadow .09s ease;
         }
-        .wd-letter { font-size: 42px; font-weight: 400; }
-        .wd-title { font-size: 34px; }
-        .wd-subtitle { font-size: 16px; }
+        .dc-letter { font-size: 42px; font-weight: 400; }
+        .dc-title { font-size: 34px; }
+        .dc-subtitle { font-size: 16px; }
         @media (min-width: 1180px) {
-          .wd-dice { grid-template-columns: repeat(3, 108px); gap: 22px; }
-          .wd-tile { width: 108px; height: 108px; }
-          .wd-letter { font-size: 52px; }
-          .wd-title { font-size: 42px; }
-          .wd-subtitle { font-size: 19px; }
+          .dc-dice { grid-template-columns: repeat(3, 108px); gap: 22px; }
+          .dc-tile { width: 108px; height: 108px; }
+          .dc-letter { font-size: 52px; }
+          .dc-title { font-size: 42px; }
+          .dc-subtitle { font-size: 19px; }
         }
-        .wd-backdrop {
+        .dc-backdrop {
           position: fixed; inset: 0; z-index: 60;
           background: rgba(14,13,10,.6);
           display: flex; align-items: center; justify-content: center; padding: 20px;
         }
-        .wd-modal {
+        .dc-modal {
           background: ${CREAM}; border-radius: 6px; padding: 24px;
           width: 100%; max-width: 380px;
         }
-        .wd-flight {
+        .dc-flight {
           position: fixed;
           z-index: 80;
           pointer-events: none;
@@ -891,9 +910,9 @@ export default function WordiceGame() {
           font-size: 42px;
           box-shadow: 0 8px 24px rgba(0,0,0,.4);
           transform: translate(-50%, -50%);
-          animation: wdFlight 1.05s cubic-bezier(.4,.05,.3,1) forwards;
+          animation: dcFlight 1.05s cubic-bezier(.4,.05,.3,1) forwards;
         }
-        @keyframes wdFlight {
+        @keyframes dcFlight {
           0% {
             opacity: 0;
             background: ${CREAM}; color: ${INK};
@@ -915,25 +934,25 @@ export default function WordiceGame() {
             transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.34) rotate(0deg);
           }
         }
-        .wd-confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 1; }
-        .wd-confetti span {
+        .dc-confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 1; }
+        .dc-confetti span {
           position: absolute; top: -12px; border-radius: 1px; opacity: 0;
-          animation-name: wdConfetti; animation-timing-function: ease-in; animation-fill-mode: forwards;
+          animation-name: dcConfetti; animation-timing-function: ease-in; animation-fill-mode: forwards;
         }
-        @keyframes wdConfetti {
+        @keyframes dcConfetti {
           0%   { opacity: 1; transform: translateY(0) rotate(0deg); }
           100% { opacity: 0; transform: translateY(340px) rotate(var(--rot, 340deg)); }
         }
-        .wd-ghost:hover { color: ${CREAM} !important; border-color: rgba(240,237,228,.75) !important; }
-        .wd-accent:hover { background: ${ACCENT_HOVER} !important; }
+        .dc-ghost:hover { color: ${CREAM} !important; border-color: rgba(240,237,228,.75) !important; }
+        .dc-accent:hover { background: ${ACCENT_HOVER} !important; }
         @media (max-width: 780px) {
-          .wd-grid { grid-template-columns: minmax(0,1fr); }
-          .wd-dice { grid-template-columns: repeat(3, 1fr); gap: 12px; }
+          .dc-grid { grid-template-columns: minmax(0,1fr); }
+          .dc-dice { grid-template-columns: repeat(3, 1fr); gap: 12px; }
         }
         @media (prefers-reduced-motion: reduce) {
-          .wd-rolling { animation: none; }
-          .wd-flight { animation-duration: .01ms; }
-          .wd-confetti span { animation-duration: .01ms; }
+          .dc-rolling { animation: none; }
+          .dc-flight { animation-duration: .01ms; }
+          .dc-confetti span { animation-duration: .01ms; }
         }
       `}</style>
 
@@ -949,7 +968,7 @@ export default function WordiceGame() {
           position: 'relative',
         }}
       >
-        <div className="wd-grid">
+        <div className="dc-grid">
           {/* left */}
           <div
             style={{
@@ -971,15 +990,15 @@ export default function WordiceGame() {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
-              <span className="wd-title" style={{ fontFamily: SERIF, lineHeight: 1, color: CREAM }}>
-                Wordice
+              <span className="dc-title" style={{ fontFamily: SERIF, lineHeight: 1, color: CREAM }}>
+                DiceClue
               </span>
               <span style={{ font: monoFont(11), letterSpacing: '.12em', color: 'rgba(240,237,228,.62)' }}>
                 #{puzzleNo}
               </span>
             </div>
             <p
-              className="wd-subtitle"
+              className="dc-subtitle"
               style={{
                 margin: '0 0 22px',
                 maxWidth: 'calc(100% - 130px)',
@@ -992,7 +1011,7 @@ export default function WordiceGame() {
             </p>
 
             <div
-              className="wd-dice"
+              className="dc-dice"
               style={{
                 padding: '26px 0 30px',
                 borderTop: '1px solid rgba(240,237,228,.14)',
@@ -1030,12 +1049,12 @@ export default function WordiceGame() {
                 <span style={{ color: CREAM, letterSpacing: '.1em' }}>{sel.map((i) => letters[i]).join(' ') || '—'}</span>
               </span>
               <div style={{ display: 'flex', gap: 10 }}>
-                <button type="button" className="wd-ghost" onClick={() => { setSel([]); setStatus(''); }} style={GHOST_BTN}>
+                <button type="button" className="dc-ghost" onClick={() => { setSel([]); setStatus(''); }} style={GHOST_BTN}>
                   clear
                 </button>
                 <button
                   type="button"
-                  className="wd-accent"
+                  className="dc-accent"
                   onClick={makeWord}
                   disabled={rolling.length > 0}
                   style={{
@@ -1107,7 +1126,7 @@ export default function WordiceGame() {
                         if (guessMsg) setGuessMsg('');
                       }}
                       onKeyDown={(e) => e.key === 'Enter' && submitGuess()}
-                      aria-describedby="wd-guess-msg"
+                      aria-describedby="dc-guess-msg"
                       style={{
                         flex: 1,
                         minWidth: 0,
@@ -1139,7 +1158,7 @@ export default function WordiceGame() {
                     </button>
                   </div>
                   <div
-                    id="wd-guess-msg"
+                    id="dc-guess-msg"
                     aria-live="polite"
                     style={{
                       marginTop: 7,
@@ -1210,7 +1229,7 @@ export default function WordiceGame() {
       {flights.map((f) => (
         <span
           key={f.id}
-          className="wd-flight"
+          className="dc-flight"
           aria-hidden="true"
           style={{
             left: f.x,
